@@ -604,7 +604,516 @@ Files rtl_reads.txt and gls_reads.txt are identical
 | `$readmemh: Unable to open hkspi.hex for reading` | Running from wrong directory or path mismatch for hex file   | Run simulations from hkspi DV directory where `hkspi.hex` is located.        |
 
 ***
+***
 
-# UART RTL vs GLS Simulation
+# Caravel hkspi RTL Simulation Guide
 
+Complete step-by-step guide for performing RTL simulation of the housekeeping SPI (hkspi) module in Caravel on Ubuntu/Linux systems.
 
+## Table of Contents
+- [Prerequisites](#prerequisites)
+- [Environment Setup](#environment-setup)
+- [RTL Simulation Steps](#rtl-simulation-steps)
+- [Common Errors and Solutions](#common-errors-and-solutions)
+- [Verification](#verification)
+- [Understanding the Commands](#understanding-the-commands)
+
+***
+
+## Prerequisites
+
+Before starting, ensure you have the following tools installed:
+
+```bash
+iverilog --version   # Icarus Verilog (any recent version)
+vvp --version        # Verilog runtime
+git --version        # Git version control
+python3 --version    # Python 3.x
+pip3 --version       # pip package manager
+```
+
+If any tool is missing, install using:
+```bash
+sudo apt-get update
+sudo apt-get install iverilog git python3 python3-pip
+```
+
+***
+
+## Environment Setup
+
+### Step 1: Navigate to hkspi Directory
+
+```bash
+cd ~/Desktop/VLSI/caravel_vsd/caravel/verilog/dv/caravel/mgmt_soc/hkspi
+```
+
+**Explanation:** This changes your working directory to the hkspi test location where the testbench (`hkspi_tb.v`) and test files (`hkspi.hex`) are located.
+
+***
+
+### Step 2: Set CARAVEL_ROOT Environment Variable
+
+```bash
+export CARAVEL_ROOT=$(pwd | sed 's|/verilog/dv/caravel/mgmt_soc/hkspi||')
+```
+
+**Explanation:** 
+- `pwd` prints the current working directory
+- `sed` removes the hkspi subdirectory path to get the Caravel repository root
+- This variable is used by compilation commands to locate source files
+
+***
+
+### Step 3: Set PDK_ROOT and PDK Variables
+
+```bash
+export PDK_ROOT=$CARAVEL_ROOT/pdk
+```
+
+```bash
+export PDK=sky130A
+```
+
+**Explanation:**
+- `PDK_ROOT` points to the Process Design Kit directory containing Sky130A libraries
+- `PDK` specifies which PDK variant to use (sky130A for this project)
+
+***
+
+### Step 4: Verify Management Core Wrapper Exists
+
+```bash
+ls $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper
+```
+
+**Expected output:** Directory listing showing folders like `def`, `gds`, `verilog`, etc.
+
+**If error "No such file or directory" appears:**
+
+```bash
+cd $CARAVEL_ROOT && git clone https://github.com/efabless/caravel_mgmt_soc_litex verilog/rtl/mgmt_core_wrapper && cd -
+```
+
+**Explanation:** The management core wrapper contains the VexRiscv CPU and management SoC RTL required for simulation. This step clones it if missing.
+
+***
+
+### Step 5: Fix caravel_netlists.v Include Paths
+
+Navigate to RTL directory:
+```bash
+cd $CARAVEL_ROOT/verilog/rtl
+```
+
+Fix digital_pll include:
+```bash
+sed -i 's|"gl/digital_pll.v"|"digital_pll.v"|g' caravel_netlists.v
+```
+
+Fix GPIO control block include:
+```bash
+sed -i 's|"gl/gpio_control_block.v"|"gpio_control_block.v"|g' caravel_netlists.v
+```
+
+Fix GPIO signal buffering include:
+```bash
+sed -i 's|"gl/gpio_signal_buffering.v"|"gpio_signal_buffering.v"|g' caravel_netlists.v
+```
+
+Fix management defines include:
+```bash
+sed -i 's|"gl/mgmt_defines.v"|"defines.v"|g' caravel_netlists.v
+```
+
+**Explanation:** 
+- `sed -i` performs in-place file editing
+- These commands remove incorrect `gl/` prefixes from include paths
+- The `caravel_netlists.v` file references various modules that need correct paths for RTL simulation
+
+***
+
+### Step 6: Create Dummy Fill Cell Module
+
+```bash
+echo "module sky130_ef_sc_hd__fill_4(inout VPWR, inout VGND, inout VPB, inout VNB); endmodule" > $CARAVEL_ROOT/verilog/dv/dummy_fill.v
+```
+
+**Explanation:** Creates a dummy (empty) module for the Sky130 fill cell that appears in netlists but isn't functionally required for RTL simulation.
+
+***
+
+### Step 7: Return to hkspi Directory
+
+```bash
+cd $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc/hkspi
+```
+
+***
+
+### Step 8: Locate VexRiscv CPU File
+
+```bash
+export VEX_FILE=$(find $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper -name "VexRiscv*.v" | head -n 1)
+```
+
+**Explanation:** 
+- `find` searches for the VexRiscv CPU Verilog file
+- `head -n 1` takes the first match
+- The VexRiscv is the RISC-V CPU used in Caravel's management SoC
+
+Verify it was found:
+```bash
+echo $VEX_FILE
+```
+
+**Expected output:** Path ending with something like `/VexRiscv.v` or `/VexRiscv_MinDebugCache.v`
+
+***
+
+## RTL Simulation Steps
+
+### Step 9: Compile RTL with Icarus Verilog
+
+```bash
+iverilog -Ttyp -DFUNCTIONAL -DSIM -D USE_POWER_PINS -D UNIT_DELAY=#1 -I $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc -I $CARAVEL_ROOT/verilog/dv/caravel -I $CARAVEL_ROOT/verilog/rtl -I $CARAVEL_ROOT/verilog -I $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper/verilog/rtl -I $PDK_ROOT/sky130A -y $CARAVEL_ROOT/verilog/rtl -y $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper/verilog/rtl $PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v $PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v $PDK_ROOT/sky130A/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v $CARAVEL_ROOT/verilog/dv/dummy_fill.v $VEX_FILE hkspi_tb.v -o hkspi.vvp
+```
+
+**Explanation of flags:**
+- `-Ttyp`: Select typical timing model
+- `-DFUNCTIONAL`: Define FUNCTIONAL macro for functional (non-timing) simulation
+- `-DSIM`: Define SIM macro to enable simulation-specific code
+- `-D USE_POWER_PINS`: Enable power pin connections required by Sky130 cells
+- `-D UNIT_DELAY=#1`: Set unit delay to 1 time unit
+- `-I <path>`: Add include search paths for `include` directives
+- `-y <path>`: Add library search paths for module auto-discovery
+- `primitives.v`: Sky130 primitive cells (basic gates)
+- `sky130_fd_sc_hd.v`: Sky130 standard cell library (high-density)
+- `sky130_fd_io.v`: Sky130 I/O pad library
+- `-o hkspi.vvp`: Output compiled simulation file
+
+**Expected output:** Minimal or no output means successful compilation.
+
+***
+
+### Step 10: Run the Simulation
+
+```bash
+vvp hkspi.vvp | tee rtl_hkspi.log
+```
+
+**Explanation:**
+- `vvp` executes the compiled Verilog simulation
+- `| tee rtl_hkspi.log` displays output to terminal AND saves it to `rtl_hkspi.log`
+- The simulation reads `hkspi.hex` to initialize memory for the SPI flash model
+
+**Expected output:** Should show simulation progress and register read operations.
+
+***
+
+### Step 11: Verify Success
+
+```bash
+grep "Monitor: Test HK SPI (RTL) Passed" rtl_hkspi.log
+```
+
+**Expected output:**
+```
+Monitor: Test HK SPI (RTL) Passed
+```
+
+***
+
+## Common Errors and Solutions
+
+### Error 1: Empty Simulation Output
+
+**Symptom:**
+```bash
+vvp hkspi.vvp | tee rtl_hkspi.log
+# Returns immediately with no output
+```
+
+**Possible Causes:**
+
+1. **hkspi.hex file missing or in wrong location**
+
+**Check:**
+```bash
+ls -lh hkspi.hex
+```
+
+**Solution:** Ensure you're running from the hkspi directory:
+```bash
+cd $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc/hkspi
+```
+
+2. **Testbench missing $dumpfile or $finish statements**
+
+**Check:**
+```bash
+grep -n "\$finish" hkspi_tb.v
+grep -n "initial" hkspi_tb.v
+```
+
+**Solution:** Verify testbench has proper simulation control statements.
+
+3. **Waveform dumping commented out (reduces output)**
+
+**Check:**
+```bash
+grep "dumpfile" hkspi_tb.v
+```
+
+If lines start with `//`, waveform dumping is disabled (this is OK for lightweight simulation).
+
+***
+
+### Error 2: mgmt_core_wrapper.v Not Found
+
+**Error message:**
+```
+Include file mgmt_core_wrapper.v not found
+```
+
+**Cause:** Management SoC wrapper repository not cloned.
+
+**Solution:**
+```bash
+cd $CARAVEL_ROOT
+git clone https://github.com/efabless/caravel_mgmt_soc_litex verilog/rtl/mgmt_core_wrapper
+cd $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc/hkspi
+```
+
+***
+
+### Error 3: VexRiscv Module Not Found
+
+**Error message:**
+```
+error: Unknown module type: VexRiscv
+```
+
+**Cause:** VexRiscv CPU file not included in compilation.
+
+**Solution:** Ensure Step 8 was completed and `$VEX_FILE` is set:
+```bash
+echo $VEX_FILE
+# Should show path to VexRiscv*.v file
+```
+
+If empty, re-run:
+```bash
+export VEX_FILE=$(find $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper -name "VexRiscv*.v" | head -n 1)
+```
+
+Then recompile (Step 9).
+
+***
+
+### Error 4: Include File gl/xxx.v Not Found
+
+**Error message:**
+```
+Include file gl/digital_pll.v not found
+```
+
+**Cause:** `caravel_netlists.v` has incorrect GL (gate-level) path prefixes for RTL simulation.
+
+**Solution:** Run Step 5 completely to fix all include paths using `sed` commands.
+
+***
+
+### Error 5: $readmemh Cannot Open hkspi.hex
+
+**Error message:**
+```
+ERROR: $readmemh: Unable to open hkspi.hex for reading
+```
+
+**Cause:** Simulation running from wrong directory or hex file missing.
+
+**Solution 1 - Verify location:**
+```bash
+pwd
+# Should end with .../mgmt_soc/hkspi
+```
+
+**Solution 2 - Check hex file exists:**
+```bash
+ls -lh hkspi.hex
+```
+
+**Solution 3 - Generate hex file if missing:**
+Check if `hkspi.c` exists, then compile it (requires RISC-V toolchain):
+```bash
+ls -lh hkspi.c
+# If you see hkspi.c, you may need to compile it first
+```
+
+***
+
+### Error 6: Simulation Hangs (Never Finishes)
+
+**Symptom:** `vvp` command runs but never terminates.
+
+**Cause:** Testbench may be waiting for signals or lacks $finish statement.
+
+**Solution 1 - Add timeout:**
+Kill the process (Ctrl+C) and check testbench has timeout:
+```bash
+grep -A5 "initial" hkspi_tb.v | grep "finish"
+```
+
+**Solution 2 - Run with timeout:**
+```bash
+timeout 60 vvp hkspi.vvp | tee rtl_hkspi.log
+```
+This kills simulation after 60 seconds.
+
+***
+
+### Error 7: Compilation Warnings About Undefined Modules
+
+**Warning message:**
+```
+warning: macro USE_POWER_PINS is undefined
+```
+
+**Cause:** Normal for some library cells that conditionally use power pins.
+
+**Solution:** These warnings are typically safe to ignore if compilation completes.
+
+***
+
+## Verification
+
+### Check Log File Content
+
+```bash
+cat rtl_hkspi.log
+```
+
+Should show:
+- Memory loading messages
+- Register read/write operations
+- Test progress indicators
+- Final "Passed" message[1]
+
+***
+
+### Extract Register Reads
+
+```bash
+grep "Read register" rtl_hkspi.log > rtl_reads.txt
+cat rtl_reads.txt
+```
+
+**Expected output:** Multiple lines showing register reads with expected vs actual values:
+```
+Read register 0 = 0x00 (should be 0x00)
+Read register 1 = 0x04 (should be 0x04)
+...
+```
+
+***
+
+### Verify All Tests Passed
+
+```bash
+grep -i "passed\|failed" rtl_hkspi.log
+```
+
+Should show "Passed" and no "Failed" messages.
+
+***
+
+## Understanding the Commands
+
+### What is iverilog?
+
+Icarus Verilog (`iverilog`) is an open-source Verilog compiler that converts Verilog source code into an executable simulation format.
+
+### What is vvp?
+
+`vvp` (Verilog Simulation Runtime) executes the compiled `.vvp` file produced by iverilog.
+
+### What is hkspi?
+
+The housekeeping SPI (hkspi) is a 4-pin SPI interface in Caravel that allows external access to configuration registers, CPU control, and system monitoring.
+
+### What does the hkspi test verify?
+
+The test verifies:
+- SPI communication protocol (Mode 0)
+- Register read/write operations through housekeeping SPI
+- Proper data transfer between host and management SoC
+- Register values match expected configuration
+
+***
+
+## Quick Reference - Complete Workflow
+
+Copy and paste these commands for a complete RTL simulation (assuming setup is done):
+
+```bash
+# Set environment
+export CARAVEL_ROOT=$(pwd | sed 's|/verilog/dv/caravel/mgmt_soc/hkspi||')
+export PDK_ROOT=$CARAVEL_ROOT/pdk
+export PDK=sky130A
+cd $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc/hkspi
+
+# Set VexRiscv path
+export VEX_FILE=$(find $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper -name "VexRiscv*.v" | head -n 1)
+
+# Compile
+iverilog -Ttyp -DFUNCTIONAL -DSIM -D USE_POWER_PINS -D UNIT_DELAY=#1 \
+  -I $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc \
+  -I $CARAVEL_ROOT/verilog/dv/caravel \
+  -I $CARAVEL_ROOT/verilog/rtl \
+  -I $CARAVEL_ROOT/verilog \
+  -I $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper/verilog/rtl \
+  -I $PDK_ROOT/sky130A \
+  -y $CARAVEL_ROOT/verilog/rtl \
+  -y $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper/verilog/rtl \
+  $PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v \
+  $PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v \
+  $PDK_ROOT/sky130A/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v \
+  $CARAVEL_ROOT/verilog/dv/dummy_fill.v \
+  $VEX_FILE \
+  hkspi_tb.v -o hkspi.vvp
+
+# Run simulation
+vvp hkspi.vvp | tee rtl_hkspi.log
+
+# Verify
+grep "Monitor: Test HK SPI (RTL) Passed" rtl_hkspi.log
+```
+
+***
+
+## Troubleshooting Checklist
+
+If simulation fails, verify:
+
+- [ ] You're in the correct directory (`pwd` shows `.../hkspi`)
+- [ ] `hkspi.hex` exists in current directory (`ls hkspi.hex`)
+- [ ] `$CARAVEL_ROOT` is set correctly (`echo $CARAVEL_ROOT`)
+- [ ] `$VEX_FILE` points to VexRiscv file (`echo $VEX_FILE`)
+- [ ] PDK files exist (`ls $PDK_ROOT/sky130A/libs.ref/`)
+- [ ] mgmt_core_wrapper was cloned (`ls $CARAVEL_ROOT/verilog/rtl/mgmt_core_wrapper`)
+- [ ] `caravel_netlists.v` was fixed (check with `grep "gl/" $CARAVEL_ROOT/verilog/rtl/caravel_netlists.v`)
+- [ ] Compilation completed without errors
+
+***
+
+## Next Steps
+
+After successful RTL simulation:
+
+1. **Compare with GLS (Gate-Level Simulation)** to verify functional equivalence
+2. **Run other Caravel DV tests** using similar methodology
+3. **Modify test parameters** in `hkspi_tb.v` for custom verification
+4. **Generate waveforms** by uncommenting `$dumpfile`/`$dumpvars` in testbench
+
+***
