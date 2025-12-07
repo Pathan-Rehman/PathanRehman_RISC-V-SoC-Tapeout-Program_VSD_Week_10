@@ -313,6 +313,9 @@ iverilog ...
 caravel_netlists.v:71: Include file gl/mgmt_core_wrapper.v not found
 ```
 
+<img width="1096" height="500" alt="image" src="https://github.com/user-attachments/assets/69f3ea63-68c3-4c31-a6b0-08aed75f769d" />
+
+
 - The netlists still referenced `gl/mgmt_core_wrapper.v`, but my GL directory structure placed `mgmt_core_wrapper.v` under the cloned `mgmt_core_wrapper` tree, not under `verilog/gl/gl/...` as originally expected. 
 
 ### Fixing gl/mgmt_core_wrapper.v
@@ -347,6 +350,9 @@ sed -i 's/$dumpfile/\/\/ $dumpfile/g' hkspi_tb.v
 sed -i 's/$dumpvars/\/\/ $dumpvars/g' hkspi_tb.v
 ```
 
+<img width="1107" height="69" alt="image" src="https://github.com/user-attachments/assets/1a53bf4f-1324-42e2-bd58-e3d7a5172775" />
+
+
 - These `sed` commands comment out the `$dumpfile` and `$dumpvars` lines in `hkspi_tb.v` by prefixing them with `//`, effectively disabling waveform generation. 
 - This saves disk space and memory during long GLS runs, making simulations more stable. 
 
@@ -356,6 +362,8 @@ I also tried different `iverilog` options:
 iverilog -Ttyp -DFUNCTIONAL -DSIM -DGL -D USE_POWER_PINS -pfileline=1 ...
 vvp -N hkspi_gl.vvp | tee gls_hkspi.log
 ```
+<img width="1092" height="140" alt="image" src="https://github.com/user-attachments/assets/a26e5626-73d6-4bd5-9a51-49c95118c6dc" />
+
 
 - `-pfileline=1`: I enabled file/line printing in runtime errors to help trace issues back to source lines. 
 - `vvp -N`: I used `-N` to disable certain interactive features and help keep the run straightforward with logging to stdout. 
@@ -386,6 +394,9 @@ hkspi_tb.v -o hkspi_mixed.vvp && \
 vvp hkspi_mixed.vvp | tee gls_hkspi.log
 ```
 
+<img width="1095" height="491" alt="image" src="https://github.com/user-attachments/assets/ea433f8e-2321-4bc4-8515-7328722fe9a8" />
+
+
 **Error faced**
 
 ```text
@@ -404,6 +415,9 @@ cd $CARAVEL_ROOT/verilog/rtl
 sed -i 's|`include "housekeeping.v"|// `include "housekeeping.v"|g' caravel_netlists.v
 cd $CARAVEL_ROOT/verilog/dv/caravel/mgmt_soc/hkspi
 ```
+
+<img width="1087" height="98" alt="image" src="https://github.com/user-attachments/assets/e98eeb10-d9d5-4e4e-98bc-9ec97c82f96f" />
+
 
 - This change commented out the `housekeeping.v` RTL include, avoiding the double definition while keeping the explicitly provided GL `housekeeping.v` in the compilation. 
 
@@ -446,6 +460,9 @@ $VEX_FILE \
 hkspi_tb.v -o hkspi_mixed.vvp && \
 vvp hkspi_mixed.vvp | tee gls_hkspi.log
 ```
+
+<img width="1090" height="448" alt="image" src="https://github.com/user-attachments/assets/50641167-c84b-48f9-8dfe-d0cd83490f81" />
+
 
 - `export VEX_FILE=...`: I automatically discovered the VexRiscv RTL file path. 
 - I appended `$VEX_FILE` to the iverilog command, ensuring the CPU module is compiled and elaborated correctly. 
@@ -496,6 +513,9 @@ hkspi_tb.v -o hkspi.vvp && \
 vvp hkspi.vvp | tee rtl_hkspi.log
 ```
 
+<img width="1082" height="707" alt="image" src="https://github.com/user-attachments/assets/80dbd253-0115-4cb1-a602-538f687fd219" />
+
+
 - This command compiled the RTL hierarchy together with the VexRiscv CPU and standard‑cell models and then ran `vvp`, saving the output in `rtl_hkspi.log`. 
 
 **Result**
@@ -524,6 +544,9 @@ grep "Read register" gls_hkspi.log > gls_reads.txt
 head rtl_reads.txt gls_reads.txt
 ```
 
+<img width="1096" height="599" alt="image" src="https://github.com/user-attachments/assets/4a8e97fb-b487-424f-87b6-0e7c3342e679" />
+
+
 - `grep "Read register"`: I filtered the logs to only keep lines that print register reads, which are the functional checkpoints of the hkspi test. 
 - I saved the RTL and GLS subsets into `rtl_reads.txt` and `gls_reads.txt` respectively for a clean diff. 
 - `head rtl_reads.txt gls_reads.txt`: I quickly inspected the first lines to confirm that the GLS log contained the expected register read sequence. 
@@ -542,6 +565,9 @@ diff -s rtl_reads.txt gls_reads.txt
 ...
 > Read register 18 = 0x04 (should be 0x04)
 ```
+
+<img width="1095" height="90" alt="image" src="https://github.com/user-attachments/assets/bbbcf960-4623-49b4-b976-8c203448a5c9" />
+
 
 - At first, the GLS file contained the register reads while `rtl_reads.txt` was empty or incomplete, indicating that I needed a clean RTL run with the same logging format. 
 
