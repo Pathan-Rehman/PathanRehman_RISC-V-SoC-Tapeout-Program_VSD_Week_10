@@ -604,3 +604,7 @@ Files rtl_reads.txt and gls_reads.txt are identical
 | `$readmemh: Unable to open hkspi.hex for reading` | Running from wrong directory or path mismatch for hex file   | Run simulations from hkspi DV directory where `hkspi.hex` is located.        |
 
 ***
+
+# UART RTL vs GLS Simulation
+
+
